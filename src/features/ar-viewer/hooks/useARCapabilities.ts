@@ -2,24 +2,24 @@
 
 import { useEffect, useState } from 'react';
 
+/** Modos de visualización ordenados por calidad de UX (best → fallback). */
+export type ARMode = 'native' | 'camera' | 'preview';
+
 export interface ARCapabilities {
-  /** Está en un contexto seguro (HTTPS o localhost) */
+  /** Contexto seguro (HTTPS o localhost) */
   isSecureContext: boolean;
-  /** Es un dispositivo móvil */
   isMobile: boolean;
-  /** Detectó iOS (iPhone/iPad) */
   isIOS: boolean;
-  /** Detectó Android */
   isAndroid: boolean;
-  /** WebXR está disponible (Android Chrome con ARCore) */
+  /** WebXR / ARCore disponible (Android Chrome con ARCore en dispositivo whitelistado) */
   hasWebXR: boolean;
-  /** El navegador soporta AR de algún modo */
-  canDoAR: boolean;
-  /** Razón principal por la que NO puede hacer AR (si aplica) */
-  blockingReason: string | null;
-  /** User agent string (para debugging) */
+  /** Hay al menos una cámara (webcam o cam mobile) accesible vía getUserMedia */
+  hasCamera: boolean;
+  /** Modo recomendado para este dispositivo */
+  recommendedMode: ARMode;
+  /** Mensaje explicativo del modo elegido */
+  modeReason: string;
   userAgent: string;
-  /** Estado de la detección */
   ready: boolean;
 }
 
@@ -30,8 +30,9 @@ export function useARCapabilities(): ARCapabilities {
     isIOS: false,
     isAndroid: false,
     hasWebXR: false,
-    canDoAR: false,
-    blockingReason: null,
+    hasCamera: false,
+    recommendedMode: 'preview',
+    modeReason: '',
     userAgent: '',
     ready: false,
   });
@@ -45,34 +46,65 @@ export function useARCapabilities(): ARCapabilities {
     const isMobile = isIOS || isAndroid;
     const isSecureContext = window.isSecureContext;
 
-    const xr = (
-      navigator as Navigator & {
-        xr?: { isSessionSupported: (mode: string) => Promise<boolean> };
-      }
-    ).xr;
-
-    const checkWebXR = async () => {
+    const detect = async () => {
+      // 1) WebXR (Android con ARCore)
       let hasWebXR = false;
+      const xr = (
+        navigator as Navigator & {
+          xr?: { isSessionSupported: (mode: string) => Promise<boolean> };
+        }
+      ).xr;
       if (xr?.isSessionSupported) {
         try {
           hasWebXR = await xr.isSessionSupported('immersive-ar');
         } catch {
-          hasWebXR = false;
+          /* no-op */
         }
       }
 
-      const canDoAR = isSecureContext && isMobile && (hasWebXR || isIOS);
+      // 2) getUserMedia (webcam / cámara mobile sin ARCore)
+      let hasCamera = false;
+      if (navigator.mediaDevices?.enumerateDevices) {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          hasCamera = devices.some((d) => d.kind === 'videoinput');
+        } catch {
+          /* no-op */
+        }
+      }
 
-      let blockingReason: string | null = null;
-      if (!isSecureContext) {
-        blockingReason =
-          'Se necesita HTTPS para AR. Cuando esté en Netlify se resuelve solo.';
-      } else if (!isMobile) {
-        blockingReason =
-          'AR solo funciona en celular. En desktop podés rotar el modelo 3D pero no plantarlo en tu entorno.';
-      } else if (isAndroid && !hasWebXR) {
-        blockingReason =
-          'Tu Android no expone WebXR. Verificá: 1) usás Chrome actualizado, 2) tenés "Google Play Services for AR" instalado desde Play Store, 3) tu modelo está en la lista de ARCore (developers.google.com/ar/devices).';
+      // 3) Decisión del modo
+      // - native: WebXR/ARCore en Android, o iOS (Quick Look siempre presente)
+      // - camera: hay cámara accesible y HTTPS, pero no AR nativo
+      // - preview: sin cámara o sin contexto seguro → solo modelo 3D
+      let recommendedMode: ARMode;
+      let modeReason: string;
+
+      if (isSecureContext && (hasWebXR || isIOS)) {
+        recommendedMode = 'native';
+        modeReason = isIOS
+          ? 'iOS Quick Look disponible — AR con tracking real.'
+          : 'WebXR/ARCore disponible — AR con tracking real.';
+      } else if (isSecureContext && hasCamera) {
+        recommendedMode = 'camera';
+        if (isAndroid) {
+          modeReason =
+            'Tu dispositivo no está en la whitelist de ARCore. Usaremos modo cámara como fondo (sin tracking pero igualmente útil para previsualizar).';
+        } else if (!isMobile) {
+          modeReason =
+            'En desktop AR nativo no existe. Usaremos webcam como fondo para que veas el modelo en tu entorno.';
+        } else {
+          modeReason = 'Modo cámara: el modelo se ve sobre el feed de tu cámara.';
+        }
+      } else {
+        recommendedMode = 'preview';
+        if (!isSecureContext) {
+          modeReason = 'Se necesita HTTPS para acceder a la cámara.';
+        } else if (!hasCamera) {
+          modeReason = 'No detectamos cámara en este dispositivo.';
+        } else {
+          modeReason = 'Solo preview 3D disponible.';
+        }
       }
 
       setCaps({
@@ -81,14 +113,15 @@ export function useARCapabilities(): ARCapabilities {
         isIOS,
         isAndroid,
         hasWebXR,
-        canDoAR,
-        blockingReason,
+        hasCamera,
+        recommendedMode,
+        modeReason,
         userAgent: ua,
         ready: true,
       });
     };
 
-    checkWebXR();
+    detect();
   }, []);
 
   return caps;

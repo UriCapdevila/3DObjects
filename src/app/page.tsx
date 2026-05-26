@@ -1,19 +1,11 @@
 'use client';
 
-import { ARViewer, ARSupportBadge } from '@/features/ar-viewer';
+import { SmartARViewer, ARSupportBadge } from '@/features/ar-viewer';
 
-/**
- * Página principal — Validación del pipeline AR.
- *
- * Modelos:
- * - rack-demo.glb (servido desde public/models/) → funciona en Android
- * - rack-demo.usdz → falta generar (ver instrucciones más abajo).
- *   Sin .usdz, iOS NO abre la cámara aunque el botón AR aparezca.
- */
 export default function HomePage() {
   const model = {
     src: '/models/rack-demo.glb',
-    iosSrc: '/models/rack-demo.usdz', // 404 hasta que lo generes, no rompe Android
+    iosSrc: '/models/rack-demo.usdz',
     alt: 'Rack de madera de 3 estantes — modelo demo',
   };
 
@@ -22,31 +14,42 @@ export default function HomePage() {
       <header className="mb-8">
         <h1 className="text-3xl font-semibold tracking-tight">Rack AR — MVP</h1>
         <p className="mt-2 text-neutral-600">
-          Abrí esta página desde tu <strong>celular</strong> (Android Chrome o iPhone Safari)
-          para plantar el rack en tu entorno real.
+          Visualizá el rack en tu entorno. Si tu dispositivo soporta AR nativo
+          (ARCore o iOS Quick Look), vas a tener tracking real.
+          Si no, podés usar el modo cámara como fondo.
         </p>
       </header>
 
-      <ARViewer
+      <SmartARViewer
         src={model.src}
         iosSrc={model.iosSrc}
         alt={model.alt}
-        onLoad={() => console.log('[ARViewer] modelo cargado')}
-        onAREnter={() => console.log('[ARViewer] sesión AR iniciada — cámara activa')}
-        onARExit={() => console.log('[ARViewer] sesión AR finalizada')}
-        onError={(e) => console.error('[ARViewer] error:', e)}
+        onModeSelected={(mode) => {
+          // 🔮 Cuando exista services/analytics:
+          // analytics.track('ar_mode_selected', { mode, productId: '...' });
+          console.log('[SmartARViewer] modo seleccionado:', mode);
+        }}
       />
 
       <ARSupportBadge className="mt-6" modelUrls={model} />
 
       <section className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
-        <p className="font-medium">Flujo de validación</p>
-        <ol className="mt-2 list-decimal space-y-1 pl-5">
-          <li>Verificá en <em>desktop</em> que el rack se renderiza y rota (preview 3D).</li>
-          <li>Tocá <em>&quot;Verificar archivos del modelo&quot;</em> arriba — debería decir <code>.glb → 200 · model/gltf-binary</code>.</li>
-          <li>Deploy a Netlify (ver README).</li>
-          <li>Abrí la URL de Netlify desde tu celu → tocá <em>&quot;Ver en tu espacio&quot;</em>.</li>
-        </ol>
+        <p className="font-medium">Sobre los modos</p>
+        <ul className="mt-2 list-disc space-y-1 pl-5">
+          <li>
+            <strong>AR nativo</strong>: tracking de piso real. Android con ARCore
+            o cualquier iPhone moderno.
+          </li>
+          <li>
+            <strong>Cámara (Magic Mirror)</strong>: el modelo se ve sobre el feed
+            de tu cámara. Sin tracking pero útil como preview en cualquier
+            dispositivo (Poco C65 incluido).
+          </li>
+          <li>
+            <strong>Preview 3D</strong>: solo modelo rotable. Fallback final si no
+            hay cámara o HTTPS.
+          </li>
+        </ul>
       </section>
     </main>
   );

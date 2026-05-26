@@ -6,15 +6,15 @@ import { cn } from '@/lib/utils/cn';
 
 interface Props {
   className?: string;
-  /** URLs de los modelos para diagnóstico de red */
   modelUrls?: { src: string; iosSrc?: string };
 }
 
-/**
- * Panel de diagnóstico AR.
- * En mobile sin AR muestra qué falta. En desktop confirma que es esperado.
- * También verifica que los archivos del modelo se sirvan con HTTP 200 + MIME correcto.
- */
+const MODE_LABELS = {
+  native: { label: 'AR nativo', color: 'emerald', icon: '🎯' },
+  camera: { label: 'Cámara (Magic Mirror)', color: 'blue', icon: '📷' },
+  preview: { label: 'Preview 3D', color: 'neutral', icon: '🔄' },
+} as const;
+
 export function ARSupportBadge({ className, modelUrls }: Props) {
   const caps = useARCapabilities();
   const [netCheck, setNetCheck] = useState<{
@@ -65,6 +65,8 @@ export function ARSupportBadge({ className, modelUrls }: Props) {
     );
   }
 
+  const mode = MODE_LABELS[caps.recommendedMode];
+
   return (
     <div
       className={cn(
@@ -72,28 +74,39 @@ export function ARSupportBadge({ className, modelUrls }: Props) {
         className,
       )}
     >
-      <p className="mb-3 font-medium text-neutral-900">Diagnóstico AR</p>
+      <div className="mb-3 flex items-center justify-between">
+        <p className="font-medium text-neutral-900">Diagnóstico AR</p>
+        <span
+          className={cn(
+            'rounded-full px-2.5 py-1 text-xs font-medium',
+            mode.color === 'emerald' && 'bg-emerald-100 text-emerald-800',
+            mode.color === 'blue' && 'bg-blue-100 text-blue-800',
+            mode.color === 'neutral' && 'bg-neutral-100 text-neutral-700',
+          )}
+        >
+          {mode.icon} {mode.label}
+        </span>
+      </div>
 
       <ul className="space-y-1.5">
         <Row label="HTTPS / contexto seguro" ok={caps.isSecureContext} />
         <Row label="Dispositivo móvil" ok={caps.isMobile} />
         {caps.isAndroid && <Row label="WebXR / ARCore" ok={caps.hasWebXR} />}
-        {caps.isIOS && <Row label="iOS Quick Look disponible" ok={true} />}
-        <Row label="Puede iniciar AR" ok={caps.canDoAR} />
+        {caps.isIOS && <Row label="iOS Quick Look" ok={true} />}
+        <Row label="Cámara accesible (getUserMedia)" ok={caps.hasCamera} />
       </ul>
 
-      {caps.blockingReason && (
-        <div className="mt-3 rounded-lg bg-amber-50 p-3 text-amber-900">
-          <p className="font-medium">¿Por qué?</p>
-          <p className="mt-1">{caps.blockingReason}</p>
-        </div>
-      )}
-
-      {caps.canDoAR && (
-        <div className="mt-3 rounded-lg bg-emerald-50 p-3 text-emerald-900">
-          ✅ Tocá <strong>&quot;Ver en tu espacio&quot;</strong> abajo a la derecha del visor.
-        </div>
-      )}
+      <div
+        className={cn(
+          'mt-3 rounded-lg p-3',
+          caps.recommendedMode === 'native' && 'bg-emerald-50 text-emerald-900',
+          caps.recommendedMode === 'camera' && 'bg-blue-50 text-blue-900',
+          caps.recommendedMode === 'preview' && 'bg-amber-50 text-amber-900',
+        )}
+      >
+        <p className="font-medium">{mode.label}</p>
+        <p className="mt-1">{caps.modeReason}</p>
+      </div>
 
       {modelUrls && (
         <div className="mt-4 border-t border-neutral-200 pt-3">
@@ -111,7 +124,12 @@ export function ARSupportBadge({ className, modelUrls }: Props) {
               )}
               {netCheck.src && (
                 <p>
-                  .glb → <span className={netCheck.src.status === 200 ? 'text-emerald-700' : 'text-red-600'}>
+                  .glb →{' '}
+                  <span
+                    className={
+                      netCheck.src.status === 200 ? 'text-emerald-700' : 'text-red-600'
+                    }
+                  >
                     {netCheck.src.status}
                   </span>{' '}
                   · {netCheck.src.type}
@@ -119,7 +137,14 @@ export function ARSupportBadge({ className, modelUrls }: Props) {
               )}
               {netCheck.iosSrc && (
                 <p>
-                  .usdz → <span className={netCheck.iosSrc.status === 200 ? 'text-emerald-700' : 'text-red-600'}>
+                  .usdz →{' '}
+                  <span
+                    className={
+                      netCheck.iosSrc.status === 200
+                        ? 'text-emerald-700'
+                        : 'text-red-600'
+                    }
+                  >
                     {netCheck.iosSrc.status}
                   </span>{' '}
                   · {netCheck.iosSrc.type}
@@ -132,7 +157,7 @@ export function ARSupportBadge({ className, modelUrls }: Props) {
 
       <details className="mt-4 border-t border-neutral-200 pt-3">
         <summary className="cursor-pointer text-xs font-medium text-neutral-600">
-          Info del dispositivo (para debugging)
+          Info del dispositivo
         </summary>
         <p className="mt-2 break-all font-mono text-xs text-neutral-500">
           {caps.userAgent}
